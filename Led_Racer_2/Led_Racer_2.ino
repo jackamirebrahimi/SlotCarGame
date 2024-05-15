@@ -33,11 +33,13 @@ int currentPos;
 int lapCounter;
 
 //Corners
-int cornerPoints[3][2] = {
+int cornerPoints[4][2] = {
   {55, 60},
   {112, 130},
   {160, 163},
+  {6, 8},
 };
+int arrayLength = 4;
 
 
 #define NOTE_D1  37
@@ -72,6 +74,8 @@ void loop() {
   lcd.clear();
   lcd.print("LAP: ");
   lcd.print(lapCounter);
+
+  Serial.println(sizeof(cornerPoints));
 
   //Updates the lcd to display the lap counter
   if(currentPos == 175 ? lapCounter = lapCounter + constrain(1, 1, 1) : false);
@@ -124,7 +128,9 @@ void loop() {
     for (int i = 0; i < 3; i++) { //Flashes 3 times
       tone(7, NOTE_D1, 18);
       //Sets the colors of the LEDS
-      setCornerLEDS(cornerPoints[0][0], cornerPoints[0][1], false);
+      for(int i = 0; i < arrayLength; i++){
+        setCornerLEDS(cornerPoints[i][0], cornerPoints[i][1], false);
+      }
       strip.setPixelColor(currentPos, strip.Color(255, 0 ,255));
       strip.show();
       delay(250);
@@ -138,12 +144,10 @@ void loop() {
   }
 
   //Sets the lights for a corner
-  //strip.setPixelColor(55, strip.Color(0, 128 ,0));
-  //strip.setPixelColor(60, strip.Color(0, 128 ,0));
+  for(int i = 0; i < arrayLength; i++){
+    setCornerLEDS(cornerPoints[i][0], cornerPoints[i][1], true);
+  }
 
-  setCornerLEDS(cornerPoints[0][0], cornerPoints[0][1], true);
-  setCornerLEDS(112, 130, true);
-  
   //Updates the LED car position
   strip.setPixelColor(currentPos, strip.Color(255, 0 ,255));
 
@@ -165,10 +169,10 @@ void setCornerLEDS(int start, int end, bool isGreen){
 }
 
 bool checkOnCorner() {
-  for(int i = 0; i < 3; i++){
-    if(currentPos >= cornerPoints[i][0] && currentPos <= cornerPoints[i][1] && interval <= 15)
-    return true;
-    else;
-    return false;
+  for(int i = 0; i < arrayLength; i++){
+    if(currentPos >= cornerPoints[i][0] && currentPos <= cornerPoints[i][1] && interval <= 15){
+      return true;
+    }
   }
+  return false;
 }
