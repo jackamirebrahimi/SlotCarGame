@@ -1,8 +1,8 @@
-#include <LiquidCrystal.h>
-
 // Required libraries
 #include <math.h>
 #include <Adafruit_NeoPixel.h>
+#include <LiquidCrystal.h>
+#include <Servo.h>
 #ifdef __AVR__
  #include <avr/power.h> // Required for 16 MHz Adafruit Trinket
 #endif
@@ -20,6 +20,8 @@
 #define LED_COUNT 180
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
+Servo flagServo;
+
 const int buttonPin = 8;
 int buttonState = 0;
 
@@ -30,24 +32,51 @@ long speedChange = 500;
 
 int speed;
 int currentPos;
+
+int currentTime;
+int minuteTime;
+int secondTime;
+
 int lapCounter= 1;
 
 String lapText = "LAP: ";
 String timerText = "TIME: ";
+bool minutePassed = false;
+bool raceFinished = false;
 
 //Corners
-int cornerPoints[4][2] = {
-  {55, 60},
-  {112, 130},
-  {160, 163},
-  {6, 8},
+int cornerPoints[5][2] = {
+  {27, 34},
+  {53, 60},
+  {92, 99},
+  {138, 145},
+  {152, 158}
 };
-int arrayLength = 4;
+int arrayLength = 5;
 
+//Music
 #define NOTE_D1  37
 #define NOTE_C4 262
 #define NOTE_D1 37
 #define NOTE_B5  988
+
+int introSong[] = {
+  55, 55, 44, 330, 262, 330, 392, 262, 262, 262, 294
+};
+
+// note durations: 4 = quarter note, 8 = eighth note, etc.:
+int noteDurations[] = {
+  8, 8, 4, 6, 6, 6, 2, 6, 6, 6, 1
+};
+
+int startSong[] = {
+  294, 294, 294, 262
+};
+
+// note durations: 4 = quarter note, 8 = eighth note, etc.:
+int startDurations[] = {
+  2, 2, 2, 2
+};
 
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 
@@ -59,7 +88,6 @@ void setup() {
   clock_prescale_set(clock_div_1);
 #endif
   // END of Trinket-specific code.
-
   strip.begin();           // INITIALIZE NeoPixel strip object (REQUIRED)
   strip.show();            // Turn OFF all pixels ASAP
   strip.setBrightness(50); // Set BRIGHTNESS to about 1/5 (max = 255)
@@ -67,16 +95,16 @@ void setup() {
   Serial.begin(9600);
 
   lcd.begin(16,2);
+
+  flagServo.attach(10);
+  flagServo.write(0);
+
+  introSequence();
 }
 
 // loop() function -- runs repeatedly as long as board is on ---------------
 void loop() {
   buttonState = digitalRead(buttonPin); //Gets the state of the button being pressed
-
-  lcd.print(lapText + lapCounter + " / 7");
-  lcd.setCursor(0, 1);
-  lcd.print(timerText + tick / 1000);
-  lcd.setCursor(0, 0);
 
   //Prevents the car from moving if the car is at max speed on a corner
   if(!checkOnCorner()) {
@@ -84,41 +112,42 @@ void loop() {
   }
   else {
     for (int i = 0; i < 3; i++) { //Flashes 3 times
-      tone(7, NOTE_D1, 18);
-      //Sets the colors of the LEDS
-      for(int i = 0; i < arrayLength; i++){
-        setCornerLEDS(cornerPoints[i][0], cornerPoints[i][1], false);
-      }
-      strip.setPixelColor(currentPos, strip.Color(255, 0 ,255));
-      strip.show();
-      delay(250);
-
-      //Clears the strip
-      strip.clear();
-      strip.show();
-      delay(250);
+      carPenalty();
     }
     interval = 100;
   }
 
-  //Sets the lights for a corner
-  for(int i = 0; i < arrayLength; i++){
-    setCornerLEDS(cornerPoints[i][0], cornerPoints[i][1], true);
+  lightAndTimeManager();
+
+  currentTime = tick / 1000;
+  
+  if(currentTime % 60 == 0 && !minutePassed) {
+    minuteTime = minuteTime + 1;
+    minutePassed = true;
+  }
+  if(currentTime % 61 == 0) {
+    minutePassed = false;
   }
 
-  //Updates the LED car position
-  strip.setPixelColor(currentPos, strip.Color(255, 0 ,255));
+  secondTime = (currentTime % 60) - 8;
 
-  strip.show();
+  lcd.print(lapText + lapCounter + " / 7");
+  lcd.setCursor(0, 1);
 
-  //Keeps track of the milliseconds passed
-  tick = millis();
+  if(secondTime < 10 ? lcd.print(timerText + minuteTime + ":" + "0" + secondTime) : lcd.print(timerText + minuteTime + ":" + secondTime));
+
+  lcd.setCursor(0, 0);
+
+  if(lapCounter == 8 && !raceFinished) {
+    raceFinished = true;
+    scoreGame();
+  }
 }
 
 void setCornerLEDS(int start, int end, bool isGreen) {
   for (int i = 0; i <= end - start; i++){
     if (isGreen){
-      strip.setPixelColor(start + i, strip.Color(0, 128, 0));
+      strip.setPixelColor(start + i, strip.Color(255, 95, 0));
     }
     else{
       strip.setPixelColor(start + i, strip.Color(255, 0, 0));
@@ -128,7 +157,7 @@ void setCornerLEDS(int start, int end, bool isGreen) {
 
 bool checkOnCorner() {
   for(int i = 0; i < arrayLength; i++){
-    if(currentPos >= cornerPoints[i][0] && currentPos <= cornerPoints[i][1] && interval <= 15){
+    if(currentPos >= cornerPoints[i][0] && currentPos <= cornerPoints[i][1] && interval <= 12){
       return true;
     }
   }
@@ -180,5 +209,87 @@ void carMovementManager() {
     if (currentPos > 175) {
       currentPos = 0;
     }
+  }
+}
+
+void carPenalty() {
+  tone(7, NOTE_D1, 18);
+      //Sets the colors of the LEDS
+      for(int i = 0; i < arrayLength; i++){
+        setCornerLEDS(cornerPoints[i][0], cornerPoints[i][1], false);
       }
+      strip.show();
+      delay(250);
+
+      //Clears the strip
+      strip.clear();
+      strip.show();
+      delay(250);
+}
+
+void lightAndTimeManager() {
+  //Sets the lights for a corner
+  for(int i = 0; i < arrayLength; i++){
+    setCornerLEDS(cornerPoints[i][0], cornerPoints[i][1], true);
+  }
+
+  strip.setPixelColor(175, strip.Color(255, 255 ,255));
+  strip.setPixelColor(0, strip.Color(255, 255 ,255));
+
+  //Updates the LED car position
+  strip.setPixelColor(currentPos, strip.Color(255, 0 ,255));
+
+  strip.show();
+
+  //Keeps track of the milliseconds passed
+  tick = millis();
+}
+
+void introSequence() {
+  lcd.print("SLOT LED RACING");
+  for (int thisNote = 0; thisNote < 11; thisNote++) {
+    int noteDuration = 1000 / noteDurations[thisNote];
+
+    tone(7, introSong[thisNote], noteDuration);
+    int pauseBetweenNotes = noteDuration * 1.30;
+
+    delay(pauseBetweenNotes);
+    noTone(8);
+  }
+  lcd.clear();
+
+  delay(1250);
+  for (int thisNote = 0; thisNote < 11; thisNote++) {
+    int noteDuration = 1000 / startDurations[thisNote];
+
+    tone(7, introSong[thisNote], noteDuration);
+    int pauseBetweenNotes = noteDuration * 1.30;
+
+    delay(pauseBetweenNotes);
+    noTone(8);
+  }
+
+  flagServo.attach(10);
+  flagServo.write(90);
+  delay(250);
+  flagServo.detach();
+}
+
+int scoreGame() {
+  lcd.clear();
+  lcd.print("RACE OVER!");
+  lcd.setCursor(0, 1);
+  if(secondTime < 10 ? lcd.print(timerText + minuteTime + ":" + "0" + secondTime) : lcd.print(timerText + minuteTime + ":" + secondTime));
+
+  flagServo.attach(10);
+  for(int i = 0; i < 6; i++) {
+    flagServo.write(90);
+    delay(250);
+    flagServo.write(0);
+    delay(250);
+  }
+  flagServo.detach();
+
+  delay(7000);
+  asm volatile("jmp 0");
 }
