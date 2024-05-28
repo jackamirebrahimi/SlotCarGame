@@ -119,9 +119,9 @@ void loop() {
 
   lightAndTimeManager();
 
-  currentTime = tick / 1000;
+  currentTime = (tick / 1000) - 8;
   
-  if(currentTime % 60 == 0 && !minutePassed) {
+  if(currentTime % 60 == 0 && !minutePassed && currentTime > 59) {
     minuteTime = minuteTime + 1;
     minutePassed = true;
   }
@@ -129,7 +129,7 @@ void loop() {
     minutePassed = false;
   }
 
-  secondTime = (currentTime % 60) - 8;
+  secondTime = (currentTime % 60);
 
   lcd.print(lapText + lapCounter + " / 7");
   lcd.setCursor(0, 1);
